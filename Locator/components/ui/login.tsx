@@ -16,16 +16,13 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import { AppStyles } from '@/constants/appStyles';
+import { STORAGE_KEYS } from '@/constants/const';
 
 interface AuthFormProps {
   onAuthSuccess: () => void;
 }
 
-const STORAGE_KEYS = {
-  JWT_TOKEN: '@locator/jwt_token',
-  USER_ID: '@locator/user_id',
-  USER_EMAIL: '@locator/user_email',
-};
+
 
 export default function AuthForm({ onAuthSuccess }: AuthFormProps) {
   const [isLogin, setIsLogin] = useState(true);
@@ -109,7 +106,9 @@ export default function AuthForm({ onAuthSuccess }: AuthFormProps) {
           fetchAuthSession(),
           getCurrentUser(),
         ]);
+
         const token = session.tokens?.idToken?.toString() ?? '';
+        
         await AsyncStorage.multiSet([
           [STORAGE_KEYS.JWT_TOKEN, token],
           [STORAGE_KEYS.USER_ID, currentUser.userId],

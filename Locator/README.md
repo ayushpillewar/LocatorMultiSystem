@@ -52,3 +52,4 @@ Join our community of developers creating universal apps.
 ## use this command to build locally 
 
 - npx expo run:ios
+- npx expo run:ios --configuration Debug

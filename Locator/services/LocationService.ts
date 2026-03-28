@@ -1,6 +1,8 @@
 import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { LocationApiService } from './LocationApiService';
+import { Location as LocationModel } from '../dto/models';
 
 export interface LocationData {
   latitude: number;
@@ -22,11 +24,9 @@ export const STORAGE_KEYS = {
   JWT_TOKEN: '@locator/jwt_token',
   USER_ID: '@locator/user_id',
   USER_EMAIL: '@locator/user_email',
+  USER_NAME: '@locator/user_name',
   LOCATION_HISTORY: '@locator/location_history',
 };
-
-// TODO: Replace with your actual API base URL
-export const API_BASE_URL = 'https://your-api-endpoint.com';
 
 const LOCATION_TRACKING = 'background-location-task';
 const MAX_HISTORY_ENTRIES = 500;
@@ -61,41 +61,39 @@ TaskManager.defineTask(LOCATION_TRACKING, async ({ data, error }: any) => {
 
   const { locations } = data as { locations: Location.LocationObject[] };
   try {
-    const [token, userId, userEmail] = await Promise.all([
+    const [token, userId, userEmail, userName] = await Promise.all([
       AsyncStorage.getItem(STORAGE_KEYS.JWT_TOKEN),
       AsyncStorage.getItem(STORAGE_KEYS.USER_ID),
       AsyncStorage.getItem(STORAGE_KEYS.USER_EMAIL),
+      AsyncStorage.getItem(STORAGE_KEYS.USER_NAME),
     ]);
 
     for (const location of locations) {
       const insertionTimestamp = formatTimestamp(location.timestamp);
-      const payload = {
+
+      let sentToApi = false;
+      try {
+        const locationModel = new LocationModel(
+          location.coords.latitude,
+          location.coords.longitude,
+          insertionTimestamp,
+          userName ?? userEmail ?? '',
+          userId ?? '',
+        );
+        await LocationApiService.getInstance().sendLocation(locationModel, token ?? undefined);
+        sentToApi = true;
+      } catch (fetchErr) {
+        console.error('[BG Task] Failed to POST location:', fetchErr);
+      }
+
+      await saveLocationToHistory({
         userId: userId ?? '',
         insertionTimestamp,
         latitude: String(location.coords.latitude),
         longitude: String(location.coords.longitude),
         userEmail: userEmail ?? '',
-      };
-
-      let sentToApi = false;
-      try {
-        const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-        if (token) headers['Authorization'] = `Bearer ${token}`;
-
-        const response = await fetch(`${API_BASE_URL}/api/location`, {
-          method: 'POST',
-          headers,
-          body: JSON.stringify(payload),
-        });
-        sentToApi = response.ok;
-        if (!response.ok) {
-          console.warn('[BG Task] API responded with status:', response.status);
-        }
-      } catch (fetchErr) {
-        console.error('[BG Task] Failed to POST location:', fetchErr);
-      }
-
-      await saveLocationToHistory({ ...payload, sentToApi });
+        sentToApi,
+      });
     }
   } catch (err) {
     console.error('[BG Task] Processing error:', err);
@@ -264,6 +262,16 @@ export class LocationService {
       await AsyncStorage.removeItem(STORAGE_KEYS.LOCATION_HISTORY);
     } catch (err) {
       console.error('[LocationService] Error clearing history:', err);
+    }
+  }
+
+  static async getApiLocationHistory(): Promise<LocationModel[]> {
+    try {
+      const token = await AsyncStorage.getItem(STORAGE_KEYS.JWT_TOKEN);
+      return await LocationApiService.getInstance().getLocationHistory(token ?? undefined);
+    } catch (err) {
+      console.error('[LocationService] Error fetching API location history:', err);
+      return [];
     }
   }
 
