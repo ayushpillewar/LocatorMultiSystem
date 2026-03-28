@@ -34,18 +34,23 @@ export function LocationTracker({ style }: LocationTrackerProps) {
 
   const checkPermissions = async () => {
     try {
+      console.log('🔍 [LocationTracker] Requesting location permissions...');
       const { status } = await Location.requestForegroundPermissionsAsync();
+      console.log('📍 [LocationTracker] Permission status:', status);
       setHasPermission(status === 'granted');
       
       if (status !== 'granted') {
+        console.warn('⚠️ [LocationTracker] Location permission denied');
         Alert.alert(
           'Permission Required',
           'Location permission is required to track your position. Please enable it in Settings.',
           [{ text: 'OK' }]
         );
+      } else {
+        console.log('✅ [LocationTracker] Location permission granted');
       }
     } catch (error) {
-      console.error('Permission error:', error);
+      console.error('❌ [LocationTracker] Permission error:', error);
       setHasPermission(false);
     }
   };

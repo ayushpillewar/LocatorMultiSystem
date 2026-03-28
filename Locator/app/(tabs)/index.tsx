@@ -4,10 +4,12 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { LocationTracker } from '@/components/LocationTracker';
+import UserProfile from '@/components/UserProfile';
 
 export default function HomeScreen() {
   return (
     <SafeAreaView style={styles.container}>
+      <UserProfile />
       <ScrollView contentContainerStyle={styles.contentContainer}>
         <ThemedView style={styles.headerContainer}>
           <ThemedText type="title" style={styles.headerTitle}>
