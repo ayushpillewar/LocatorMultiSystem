@@ -5,41 +5,18 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { LocationTracker } from '@/components/LocationTracker';
 import UserProfile from '@/components/UserProfile';
+import { DebugPanel } from '@/components/DebugPanel';
 
 export default function HomeScreen() {
   return (
     <SafeAreaView style={styles.container}>
       <UserProfile />
       <ScrollView contentContainerStyle={styles.contentContainer}>
-        <ThemedView style={styles.headerContainer}>
-          <ThemedText type="title" style={styles.headerTitle}>
-            📍 Location Tracker App
-          </ThemedText>
-          <ThemedText style={styles.headerSubtitle}>
-            Track your current location and view real-time coordinates
-          </ThemedText>
-        </ThemedView>
-
         <LocationTracker style={styles.trackerContainer} />
-
-        <ThemedView style={styles.infoContainer}>
-          <ThemedText type="subtitle" style={styles.infoTitle}>
-            ℹ️ How to use:
-          </ThemedText>
-          <ThemedText style={styles.infoText}>
-            1. Tap "Get Current Location" to get your current position
-          </ThemedText>
-          <ThemedText style={styles.infoText}>
-            2. Tap "Start Tracking" to continuously track your location
-          </ThemedText>
-          <ThemedText style={styles.infoText}>
-            3. The app will update your coordinates every 10 seconds
-          </ThemedText>
-          <ThemedText style={styles.infoText}>
-            4. Location tracking works while the app is active/foreground
-          </ThemedText>
-        </ThemedView>
       </ScrollView>
+      
+      {/* Development debug panel - only shows in development mode */}
+      <DebugPanel />
     </SafeAreaView>
   );
 }

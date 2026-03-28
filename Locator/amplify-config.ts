@@ -16,7 +16,7 @@ const amplifyConfig = {
           required: true,
         },
         name: {
-          required: true,
+          required: false,
         },
       },
       allowGuestAccess: false,

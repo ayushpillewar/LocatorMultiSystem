@@ -1,8 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, Alert, Pressable } from 'react-native';
+import { View, StyleSheet, Alert, Pressable, ActivityIndicator } from 'react-native';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import * as Location from 'expo-location';
+import { LocationService, LocationHistoryEntry } from '@/services/LocationService';
+import { useThemeColor } from '@/hooks/use-theme-color';
+import { Fonts } from '@/constants/theme';
+import { useColorScheme } from '@/hooks/use-color-scheme';
+import { AppStyles } from '@/constants/appStyles';
 
 interface LocationData {
   latitude: number;
@@ -15,43 +20,91 @@ interface LocationTrackerProps {
   style?: any;
 }
 
+type ActiveTab = 'tracking' | 'history';
+
 export function LocationTracker({ style }: LocationTrackerProps) {
+  const [activeTab, setActiveTab] = useState<ActiveTab>('tracking');
+
+  // Foreground tracking state
   const [isTracking, setIsTracking] = useState(false);
   const [currentLocation, setCurrentLocation] = useState<LocationData | null>(null);
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
   const [lastUpdateTime, setLastUpdateTime] = useState<string>('');
   const [watchSubscription, setWatchSubscription] = useState<Location.LocationSubscription | null>(null);
 
+  // Background service state
+  const [isBackgroundTracking, setIsBackgroundTracking] = useState(false);
+  const [bgLoading, setBgLoading] = useState(false);
+
+  // History state
+  const [locationHistory, setLocationHistory] = useState<LocationHistoryEntry[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+
+  const locationService = LocationService.getInstance();
+
   useEffect(() => {
     checkPermissions();
+    checkBackgroundTrackingStatus();
     return () => {
-      // Cleanup when component unmounts
-      if (watchSubscription) {
-        watchSubscription.remove();
-      }
+      watchSubscription?.remove();
     };
   }, []);
 
+  useEffect(() => {
+    if (activeTab === 'history') {
+      loadLocationHistory();
+    }
+  }, [activeTab]);
+
   const checkPermissions = async () => {
     try {
-      console.log('🔍 [LocationTracker] Requesting location permissions...');
       const { status } = await Location.requestForegroundPermissionsAsync();
-      console.log('📍 [LocationTracker] Permission status:', status);
       setHasPermission(status === 'granted');
-      
       if (status !== 'granted') {
-        console.warn('⚠️ [LocationTracker] Location permission denied');
         Alert.alert(
           'Permission Required',
           'Location permission is required to track your position. Please enable it in Settings.',
           [{ text: 'OK' }]
         );
-      } else {
-        console.log('✅ [LocationTracker] Location permission granted');
       }
     } catch (error) {
-      console.error('❌ [LocationTracker] Permission error:', error);
+      console.error('[LocationTracker] Permission error:', error);
       setHasPermission(false);
+    }
+  };
+
+  const checkBackgroundTrackingStatus = async () => {
+    const active = await locationService.isBackgroundTrackingActive();
+    setIsBackgroundTracking(active);
+  };
+
+  const handleToggleBackgroundService = async () => {
+    setBgLoading(true);
+    try {
+      if (isBackgroundTracking) {
+        await locationService.stopBackgroundTracking();
+        setIsBackgroundTracking(false);
+        Alert.alert('Stopped', 'Background location service has been stopped.');
+      } else {
+        const success = await locationService.startBackgroundTracking();
+        if (success) {
+          setIsBackgroundTracking(true);
+          Alert.alert(
+            'Started',
+            'Background service is now running. Your location will be sent to the server every 30 seconds.'
+          );
+        } else {
+          Alert.alert(
+            'Failed',
+            'Could not start background service. Please ensure location permissions are granted.'
+          );
+        }
+      }
+    } catch (err) {
+      console.error('[LocationTracker] Background toggle error:', err);
+      Alert.alert('Error', 'An error occurred while toggling the background service.');
+    } finally {
+      setBgLoading(false);
     }
   };
 
@@ -60,69 +113,44 @@ export function LocationTracker({ style }: LocationTrackerProps) {
       await checkPermissions();
       return;
     }
-
-    Alert.alert(
-      'Start Location Tracking',
-      'This will track your location continuously while the app is active.',
-      [
-        { text: 'Cancel', style: 'cancel' },
+    try {
+      const subscription = await Location.watchPositionAsync(
         {
-          text: 'Start',
-          onPress: async () => {
-            try {
-              const subscription = await Location.watchPositionAsync(
-                {
-                  accuracy: Location.Accuracy.High,
-                  timeInterval: 10000, // Update every 10 seconds
-                  distanceInterval: 10, // Update every 10 meters
-                },
-                (location) => {
-                  const locationData: LocationData = {
-                    latitude: location.coords.latitude,
-                    longitude: location.coords.longitude,
-                    accuracy: location.coords.accuracy,
-                    timestamp: location.timestamp,
-                  };
-
-                  setCurrentLocation(locationData);
-                  setLastUpdateTime(new Date().toLocaleTimeString());
-                  console.log('Location updated:', locationData);
-                }
-              );
-
-              setWatchSubscription(subscription);
-              setIsTracking(true);
-
-              // Get initial location
-              const initialLocation = await Location.getCurrentPositionAsync({
-                accuracy: Location.Accuracy.High,
-              });
-
-              if (initialLocation) {
-                const locationData: LocationData = {
-                  latitude: initialLocation.coords.latitude,
-                  longitude: initialLocation.coords.longitude,
-                  accuracy: initialLocation.coords.accuracy,
-                  timestamp: initialLocation.timestamp,
-                };
-                setCurrentLocation(locationData);
-                setLastUpdateTime(new Date().toLocaleTimeString());
-              }
-            } catch (error) {
-              console.error('Location tracking error:', error);
-              Alert.alert('Error', 'Failed to start location tracking');
-            }
-          },
+          accuracy: Location.Accuracy.High,
+          timeInterval: 10000,
+          distanceInterval: 10,
         },
-      ]
-    );
+        (location) => {
+          const locationData: LocationData = {
+            latitude: location.coords.latitude,
+            longitude: location.coords.longitude,
+            accuracy: location.coords.accuracy,
+            timestamp: location.timestamp,
+          };
+          setCurrentLocation(locationData);
+          setLastUpdateTime(new Date().toLocaleTimeString());
+        }
+      );
+      setWatchSubscription(subscription);
+      setIsTracking(true);
+
+      const initial = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
+      setCurrentLocation({
+        latitude: initial.coords.latitude,
+        longitude: initial.coords.longitude,
+        accuracy: initial.coords.accuracy,
+        timestamp: initial.timestamp,
+      });
+      setLastUpdateTime(new Date().toLocaleTimeString());
+    } catch (error) {
+      console.error('Location tracking error:', error);
+      Alert.alert('Error', 'Failed to start location tracking');
+    }
   };
 
-  const handleStopTracking = async () => {
-    if (watchSubscription) {
-      watchSubscription.remove();
-      setWatchSubscription(null);
-    }
+  const handleStopTracking = () => {
+    watchSubscription?.remove();
+    setWatchSubscription(null);
     setIsTracking(false);
     setLastUpdateTime('');
   };
@@ -132,20 +160,14 @@ export function LocationTracker({ style }: LocationTrackerProps) {
       await checkPermissions();
       return;
     }
-
     try {
-      const location = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.High,
-      });
-
-      const locationData: LocationData = {
+      const location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
+      setCurrentLocation({
         latitude: location.coords.latitude,
         longitude: location.coords.longitude,
         accuracy: location.coords.accuracy,
         timestamp: location.timestamp,
-      };
-
-      setCurrentLocation(locationData);
+      });
       setLastUpdateTime(new Date().toLocaleTimeString());
     } catch (error) {
       console.error('Get location error:', error);
@@ -153,226 +175,338 @@ export function LocationTracker({ style }: LocationTrackerProps) {
     }
   };
 
-  const formatCoordinate = (value: number, precision: number = 6): string => {
-    return value.toFixed(precision);
+  const loadLocationHistory = async () => {
+    setHistoryLoading(true);
+    try {
+      const history = await LocationService.getLocationHistory();
+      setLocationHistory(history);
+    } finally {
+      setHistoryLoading(false);
+    }
   };
 
-  const formatAccuracy = (accuracy: number | null): string => {
-    if (accuracy === null) return 'Unknown';
-    return `±${accuracy.toFixed(1)}m`;
+  const handleClearHistory = () => {
+    Alert.alert(
+      'Clear History',
+      'Are you sure you want to clear all location history?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Clear',
+          style: 'destructive',
+          onPress: async () => {
+            await LocationService.clearLocationHistory();
+            setLocationHistory([]);
+          },
+        },
+      ]
+    );
   };
+
+  const colorScheme = useColorScheme() ?? 'light';
+  const isDark = colorScheme === 'dark';
+
+  const tint = useThemeColor({}, 'tint');
+  const cardBg = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)';
+  const dividerColor = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)';
+
+  const formatCoordinate = (value: number, precision: number = 6): string =>
+    value.toFixed(precision);
+
+  const formatAccuracy = (accuracy: number | null): string =>
+    accuracy === null ? 'Unknown' : `±${accuracy.toFixed(1)}m`;
 
   if (hasPermission === null) {
     return (
-      <ThemedView style={[styles.container, style]}>
-        <ThemedText style={styles.loadingText}>Checking location permissions...</ThemedText>
+      <ThemedView style={[localStyles.centeredState, style]}>
+        <ActivityIndicator size="large" color={tint} />
+        <ThemedText style={localStyles.stateLabel}>Checking location permissions…</ThemedText>
       </ThemedView>
     );
   }
 
   if (!hasPermission) {
     return (
-      <ThemedView style={[styles.container, style]}>
-        <ThemedText style={styles.errorText}>Location permission is required</ThemedText>
-        <Pressable style={styles.button} onPress={checkPermissions}>
-          <ThemedText style={styles.buttonText}>Request Permission</ThemedText>
+      <ThemedView style={[localStyles.centeredState, style]}>
+        <ThemedText style={localStyles.stateLabel}>Location access is required</ThemedText>
+        <Pressable
+          style={({ pressed }) => [AppStyles.primaryButton, { backgroundColor: tint, opacity: pressed ? 0.8 : 1 }]}
+          onPress={checkPermissions}
+        >
+          <ThemedText style={AppStyles.primaryButtonText}>Grant Permission</ThemedText>
         </Pressable>
       </ThemedView>
     );
   }
 
   return (
-    <ThemedView style={[styles.container, style]}>
-      <ThemedText type="title" style={styles.title}>
-        Location Tracker
-      </ThemedText>
+    <ThemedView style={[localStyles.container, style]}>
 
-      <ThemedView style={styles.statusContainer}>
-        <ThemedText type="subtitle" style={styles.statusLabel}>
-          Status: 
-        </ThemedText>
-        <ThemedText 
-          style={[
-            styles.statusText, 
-            { color: isTracking ? '#4CAF50' : '#FF9800' }
-          ]}
-        >
-          {isTracking ? 'TRACKING' : 'STOPPED'}
-        </ThemedText>
-      </ThemedView>
+      {/* ── Segment control ──────────────────────────────────────────── */}
+      <View style={[AppStyles.segmentBar, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)', marginHorizontal: 16, marginTop: 16 }]}>
+        {(['tracking', 'history'] as ActiveTab[]).map((tab) => {
+          const isActive = activeTab === tab;
+          const label = tab === 'tracking'
+            ? 'Live Tracking'
+            : `History${locationHistory.length > 0 ? ` (${locationHistory.length})` : ''}`;
+          return (
+            <Pressable
+              key={tab}
+              style={[
+                AppStyles.segment,
+                isActive && { backgroundColor: tint },
+              ]}
+              onPress={() => setActiveTab(tab)}
+            >
+              <ThemedText
+                style={[
+                  AppStyles.segmentText,
+                  { color: isActive ? '#fff' : isDark ? 'rgba(255,255,255,0.55)' : 'rgba(0,0,0,0.45)' },
+                ]}
+              >
+                {label}
+              </ThemedText>
+            </Pressable>
+          );
+        })}
+      </View>
 
-      {currentLocation && (
-        <ThemedView style={styles.locationContainer}>
-          <ThemedText type="subtitle" style={styles.sectionTitle}>
-            Current Location
-          </ThemedText>
-          
-          <ThemedView style={styles.locationDetails}>
-            <ThemedView style={styles.coordinateRow}>
-              <ThemedText style={styles.label}>Latitude:</ThemedText>
-              <ThemedText style={styles.value}>
-                {formatCoordinate(currentLocation.latitude)}
-              </ThemedText>
-            </ThemedView>
-            
-            <ThemedView style={styles.coordinateRow}>
-              <ThemedText style={styles.label}>Longitude:</ThemedText>
-              <ThemedText style={styles.value}>
-                {formatCoordinate(currentLocation.longitude)}
-              </ThemedText>
-            </ThemedView>
-            
-            <ThemedView style={styles.coordinateRow}>
-              <ThemedText style={styles.label}>Accuracy:</ThemedText>
-              <ThemedText style={styles.value}>
-                {formatAccuracy(currentLocation.accuracy)}
-              </ThemedText>
-            </ThemedView>
+      {/* ════════════════ LIVE TRACKING TAB ════════════════ */}
+      {activeTab === 'tracking' && (
+        <View style={localStyles.tabContent}>
 
-            {lastUpdateTime && (
-              <ThemedView style={styles.coordinateRow}>
-                <ThemedText style={styles.label}>Last Update:</ThemedText>
-                <ThemedText style={styles.value}>{lastUpdateTime}</ThemedText>
-              </ThemedView>
+          {/* Background service card */}
+          <View style={[AppStyles.card, { backgroundColor: cardBg }]}>
+            <View style={AppStyles.cardHeader}>
+              <View style={AppStyles.cardTitleRow}>
+                <View style={[AppStyles.statusDot, { backgroundColor: isBackgroundTracking ? '#22C55E' : isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.15)' }]} />
+                <ThemedText style={AppStyles.sectionTitle}>Background Service</ThemedText>
+              </View>
+              <View style={[AppStyles.pill, { backgroundColor: isBackgroundTracking ? 'rgba(34,197,94,0.12)' : isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)' }]}>
+                <ThemedText style={[AppStyles.pillText, { color: isBackgroundTracking ? '#22C55E' : isDark ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.35)' }]}>
+                  {isBackgroundTracking ? 'Active' : 'Idle'}
+                </ThemedText>
+              </View>
+            </View>
+            <ThemedText style={AppStyles.cardSubtext}>
+              {isBackgroundTracking
+                ? 'Sending your location to the server every 30 s'
+                : 'Tap below to start tracking in the background'}
+            </ThemedText>
+            <Pressable
+              style={({ pressed }) => [
+                AppStyles.primaryButton,
+                {
+                  backgroundColor: isBackgroundTracking ? '#EF4444' : tint,
+                  marginTop: 14,
+                  opacity: pressed || bgLoading ? 0.75 : 1,
+                },
+              ]}
+              onPress={handleToggleBackgroundService}
+              disabled={bgLoading}
+            >
+              {bgLoading
+                ? <ActivityIndicator color="#fff" size="small" />
+                : <ThemedText style={AppStyles.primaryButtonText}>
+                    {isBackgroundTracking ? 'Stop Background Service' : 'Start Background Service'}
+                  </ThemedText>
+              }
+            </Pressable>
+          </View>
+
+          {/* Divider */}
+          <View style={[AppStyles.divider, { backgroundColor: dividerColor, marginVertical: 2 }]} />
+
+          {/* Foreground status chip */}
+          <View style={localStyles.fgStatusRow}>
+            <ThemedText style={localStyles.fgStatusLabel}>Foreground</ThemedText>
+            <View style={[AppStyles.pill, { backgroundColor: isTracking ? 'rgba(34,197,94,0.12)' : 'rgba(234,179,8,0.12)' }]}>
+              <ThemedText style={[AppStyles.pillText, { color: isTracking ? '#22C55E' : '#EAB308' }]}>
+                {isTracking ? 'Tracking' : 'Stopped'}
+              </ThemedText>
+            </View>
+          </View>
+
+          {/* Coordinate card */}
+          {currentLocation && (
+            <View style={[AppStyles.card, { backgroundColor: cardBg, marginBottom: 12 }]}>
+              <ThemedText style={[AppStyles.sectionTitle, { marginBottom: 4 }]}>Current Location</ThemedText>
+              {[
+                { label: 'Latitude', value: formatCoordinate(currentLocation.latitude) },
+                { label: 'Longitude', value: formatCoordinate(currentLocation.longitude) },
+                { label: 'Accuracy', value: formatAccuracy(currentLocation.accuracy) },
+                ...(lastUpdateTime ? [{ label: 'Updated', value: lastUpdateTime }] : []),
+              ].map(({ label, value }, i, arr) => (
+                <View
+                  key={label}
+                  style={[
+                    localStyles.coordRow,
+                    i < arr.length - 1 && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: dividerColor },
+                  ]}
+                >
+                  <ThemedText style={localStyles.coordLabel}>{label}</ThemedText>
+                  <ThemedText style={[localStyles.coordValue, AppStyles.monoText]}>{value}</ThemedText>
+                </View>
+              ))}
+            </View>
+          )}
+
+          {/* Foreground action buttons */}
+          <View style={AppStyles.gap10}>
+            {!isTracking ? (
+              <>
+                <Pressable
+                  style={({ pressed }) => [AppStyles.primaryButton, { backgroundColor: tint, opacity: pressed ? 0.8 : 1 }]}
+                  onPress={handleStartTracking}
+                >
+                  <ThemedText style={AppStyles.primaryButtonText}>Start Foreground Tracking</ThemedText>
+                </Pressable>
+                <Pressable
+                  style={({ pressed }) => [AppStyles.ghostButton, { borderColor: tint, opacity: pressed ? 0.7 : 1 }]}
+                  onPress={handleGetCurrentLocation}
+                >
+                  <ThemedText style={[AppStyles.ghostButtonText, { color: tint }]}>Get Current Location</ThemedText>
+                </Pressable>
+              </>
+            ) : (
+              <Pressable
+                style={({ pressed }) => [AppStyles.primaryButton, { backgroundColor: '#EF4444', opacity: pressed ? 0.8 : 1 }]}
+                onPress={handleStopTracking}
+              >
+                <ThemedText style={AppStyles.primaryButtonText}>Stop Foreground Tracking</ThemedText>
+              </Pressable>
             )}
-          </ThemedView>
-        </ThemedView>
+          </View>
+        </View>
       )}
 
-      <ThemedView style={styles.buttonContainer}>
-        {!isTracking ? (
-          <>
-            <Pressable 
-              style={[styles.button, styles.startButton]} 
-              onPress={handleStartTracking}
-            >
-              <ThemedText style={styles.buttonText}>Start Tracking</ThemedText>
-            </Pressable>
-            
-            <Pressable 
-              style={[styles.button, styles.getCurrentButton]} 
-              onPress={handleGetCurrentLocation}
-            >
-              <ThemedText style={styles.buttonText}>Get Current Location</ThemedText>
-            </Pressable>
-          </>
-        ) : (
-          <Pressable 
-            style={[styles.button, styles.stopButton]} 
-            onPress={handleStopTracking}
-          >
-            <ThemedText style={styles.buttonText}>Stop Tracking</ThemedText>
-          </Pressable>
-        )}
-      </ThemedView>
+      {/* ════════════════ HISTORY TAB ════════════════ */}
+      {activeTab === 'history' && (
+        <View style={localStyles.tabContent}>
+          <View style={[AppStyles.spaceBetween, { marginBottom: 4 }]}>
+            <ThemedText style={AppStyles.sectionTitle}>Location History</ThemedText>
+            <View style={AppStyles.row}>
+              <Pressable
+                style={({ pressed }) => [AppStyles.iconButton, { borderColor: tint, opacity: pressed ? 0.7 : 1 }]}
+                onPress={loadLocationHistory}
+                disabled={historyLoading}
+              >
+                <ThemedText style={[AppStyles.iconButtonText, { color: tint }]}>↻  Refresh</ThemedText>
+              </Pressable>
+              {locationHistory.length > 0 && (
+                <Pressable
+                  style={({ pressed }) => [AppStyles.iconButton, { borderColor: '#EF4444', marginLeft: 8, opacity: pressed ? 0.7 : 1 }]}
+                  onPress={handleClearHistory}
+                >
+                  <ThemedText style={[AppStyles.iconButtonText, { color: '#EF4444' }]}>Clear</ThemedText>
+                </Pressable>
+              )}
+            </View>
+          </View>
 
-      <ThemedView style={styles.noteContainer}>
-        <ThemedText style={styles.noteText}>
-          Note: This version works in foreground only. For background location tracking, a development build is required.
-        </ThemedText>
-      </ThemedView>
+          {historyLoading && (
+            <ActivityIndicator size="large" color={tint} style={{ marginVertical: 40 }} />
+          )}
+
+          {!historyLoading && locationHistory.length === 0 && (
+            <View style={AppStyles.emptyState}>
+              <ThemedText style={AppStyles.emptyStateTitle}>No history yet</ThemedText>
+              <ThemedText style={AppStyles.emptyStateSubtext}>
+                Start the background service to begin recording
+              </ThemedText>
+            </View>
+          )}
+
+          {!historyLoading && locationHistory.slice(0, 50).map((entry, index) => (
+            <View
+              key={index}
+              style={[AppStyles.listRow, { borderBottomColor: dividerColor }]}
+            >
+              <View style={localStyles.historyRowLeft}>
+                <ThemedText style={[localStyles.historyCoords, AppStyles.monoText]}>
+                  {parseFloat(entry.latitude).toFixed(6)}, {parseFloat(entry.longitude).toFixed(6)}
+                </ThemedText>
+                <ThemedText style={[AppStyles.caption, AppStyles.monoText, { marginTop: 2 }]}>
+                  {entry.insertionTimestamp}
+                </ThemedText>
+              </View>
+              <View style={[AppStyles.pill, { backgroundColor: entry.sentToApi ? 'rgba(34,197,94,0.12)' : 'rgba(234,179,8,0.12)' }]}>
+                <ThemedText style={[AppStyles.pillText, { color: entry.sentToApi ? '#22C55E' : '#EAB308' }]}>
+                  {entry.sentToApi ? 'Synced' : 'Pending'}
+                </ThemedText>
+              </View>
+            </View>
+          ))}
+
+          {!historyLoading && locationHistory.length > 50 && (
+            <ThemedText style={[AppStyles.caption, { textAlign: 'center', marginTop: 8 }]}>
+              Showing 50 of {locationHistory.length} entries
+            </ThemedText>
+          )}
+        </View>
+      )}
     </ThemedView>
   );
 }
 
-const styles = StyleSheet.create({
+// Only tracker-specific rules that have no equivalent in AppStyles
+const localStyles = StyleSheet.create({
   container: {
-    padding: 20,
-    borderRadius: 12,
+    borderRadius: 16,
     marginVertical: 10,
+    overflow: 'hidden',
   },
-  title: {
-    textAlign: 'center',
-    marginBottom: 20,
-  },
-  loadingText: {
-    textAlign: 'center',
-    fontStyle: 'italic',
-  },
-  errorText: {
-    textAlign: 'center',
-    color: '#FF5722',
-    marginBottom: 15,
-  },
-  statusContainer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
+  centeredState: {
+    borderRadius: 16,
+    marginVertical: 10,
+    paddingVertical: 48,
+    paddingHorizontal: 24,
     alignItems: 'center',
-    marginBottom: 20,
+    gap: 16,
   },
-  statusLabel: {
-    marginRight: 8,
-  },
-  statusText: {
-    fontWeight: 'bold',
-    fontSize: 16,
-  },
-  locationContainer: {
-    marginBottom: 20,
-  },
-  sectionTitle: {
-    marginBottom: 12,
+  stateLabel: {
+    fontSize: 15,
+    opacity: 0.6,
     textAlign: 'center',
   },
-  locationDetails: {
-    backgroundColor: 'rgba(0,0,0,0.05)',
-    borderRadius: 8,
-    padding: 15,
+  tabContent: {
+    paddingHorizontal: 16,
+    paddingBottom: 20,
+    paddingTop: 12,
+    gap: 12,
   },
-  coordinateRow: {
+  fgStatusRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 4,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(0,0,0,0.1)',
-    marginBottom: 8,
+    paddingHorizontal: 4,
   },
-  label: {
+  fgStatusLabel: {
+    fontSize: 14,
     fontWeight: '600',
-    flex: 1,
+    opacity: 0.7,
   },
-  value: {
-    flex: 2,
-    textAlign: 'right',
-    fontFamily: 'monospace',
-  },
-  buttonContainer: {
-    gap: 12,
-  },
-  button: {
-    backgroundColor: '#007AFF',
-    padding: 15,
-    borderRadius: 8,
+  coordRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    justifyContent: 'center',
+    paddingVertical: 10,
   },
-  startButton: {
-    backgroundColor: '#4CAF50',
+  coordLabel: {
+    fontSize: 14,
+    fontWeight: '500',
+    opacity: 0.55,
   },
-  stopButton: {
-    backgroundColor: '#FF5722',
-  },
-  getCurrentButton: {
-    backgroundColor: '#2196F3',
-  },
-  buttonText: {
-    color: 'white',
-    fontSize: 16,
+  coordValue: {
+    fontSize: 14,
     fontWeight: '600',
   },
-  noteContainer: {
-    marginTop: 20,
-    padding: 12,
-    backgroundColor: 'rgba(255, 193, 7, 0.1)',
-    borderRadius: 8,
-    borderLeftWidth: 4,
-    borderLeftColor: '#ffc107',
+  historyRowLeft: {
+    flex: 1,
+    marginRight: 12,
   },
-  noteText: {
-    fontSize: 12,
-    fontStyle: 'italic',
-    opacity: 0.8,
-    lineHeight: 16,
+  historyCoords: {
+    fontSize: 14,
+    fontWeight: '600',
   },
 });

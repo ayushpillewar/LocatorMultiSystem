@@ -10,14 +10,22 @@ import {
   Platform,
   ScrollView,
 } from 'react-native';
-import { signUp, signIn, confirmSignUp, resendSignUpCode } from '@aws-amplify/auth';
+import { signUp, signIn, confirmSignUp, resendSignUpCode, fetchAuthSession, getCurrentUser } from '@aws-amplify/auth';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { useThemeColor } from '@/hooks/use-theme-color';
+import { AppStyles } from '@/constants/appStyles';
 
 interface AuthFormProps {
   onAuthSuccess: () => void;
 }
+
+const STORAGE_KEYS = {
+  JWT_TOKEN: '@locator/jwt_token',
+  USER_ID: '@locator/user_id',
+  USER_EMAIL: '@locator/user_email',
+};
 
 export default function AuthForm({ onAuthSuccess }: AuthFormProps) {
   const [isLogin, setIsLogin] = useState(true);
@@ -31,8 +39,9 @@ export default function AuthForm({ onAuthSuccess }: AuthFormProps) {
 
   const primaryColor = useThemeColor({}, 'tint');
   const textColor = useThemeColor({}, 'text');
-  const borderColor = useThemeColor({ light: '#E0E0E0', dark: '#444444' }, 'border');
+  const borderColor = useThemeColor({ light: '#E0E0E0', dark: '#444444' }, 'icon');
   const inputBackgroundColor = useThemeColor({ light: '#F8F8F8', dark: '#2A2A2A' }, 'background');
+  const placeholderColor = useThemeColor({ light: '#888', dark: '#666' }, 'icon');
 
   const validateForm = () => {
     if (!email.trim()) {
@@ -93,6 +102,23 @@ export default function AuthForm({ onAuthSuccess }: AuthFormProps) {
     setLoading(true);
     try {
       await signIn({ username: email, password: password });
+
+      // Store JWT token and user info for the background location service
+      try {
+        const [session, currentUser] = await Promise.all([
+          fetchAuthSession(),
+          getCurrentUser(),
+        ]);
+        const token = session.tokens?.idToken?.toString() ?? '';
+        await AsyncStorage.multiSet([
+          [STORAGE_KEYS.JWT_TOKEN, token],
+          [STORAGE_KEYS.USER_ID, currentUser.userId],
+          [STORAGE_KEYS.USER_EMAIL, email.toLowerCase().trim()],
+        ]);
+      } catch (sessionErr) {
+        console.warn('[AuthForm] Could not persist session tokens:', sessionErr);
+      }
+
       onAuthSuccess();
     } catch (error: any) {
       Alert.alert('Sign In Failed', error.message || 'Invalid email or password');
@@ -152,28 +178,21 @@ export default function AuthForm({ onAuthSuccess }: AuthFormProps) {
   if (showConfirmation) {
     return (
       <KeyboardAvoidingView
-        style={styles.container}
+        style={AppStyles.flex1}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
-        <ThemedView style={styles.formContainer}>
-          <ThemedText type="title" style={styles.title}>
+        <ThemedView style={AppStyles.formContainer}>
+          <ThemedText type="title" style={localStyles.titleOverride}>
             Confirm Your Account
           </ThemedText>
-          <ThemedText style={styles.subtitle}>
+          <ThemedText style={AppStyles.subtitle}>
             Enter the confirmation code sent to {email}
           </ThemedText>
 
           <TextInput
-            style={[
-              styles.input,
-              {
-                borderColor,
-                backgroundColor: inputBackgroundColor,
-                color: textColor,
-              }
-            ]}
+            style={[AppStyles.input, { borderColor, backgroundColor: inputBackgroundColor, color: textColor }]}
             placeholder="Confirmation Code"
-            placeholderTextColor={useThemeColor({ light: '#666', dark: '#999' }, 'text')}
+            placeholderTextColor={placeholderColor}
             value={confirmationCode}
             onChangeText={setConfirmationCode}
             keyboardType="number-pad"
@@ -181,27 +200,23 @@ export default function AuthForm({ onAuthSuccess }: AuthFormProps) {
           />
 
           <TouchableOpacity
-            style={[styles.primaryButton, { backgroundColor: primaryColor }]}
+            style={[AppStyles.primaryButton, { backgroundColor: primaryColor, marginTop: 8, marginBottom: 16 }]}
             onPress={handleConfirmSignUp}
             disabled={loading}
           >
             {loading ? (
               <ActivityIndicator color="white" />
             ) : (
-              <ThemedText style={styles.primaryButtonText}>Confirm Account</ThemedText>
+              <ThemedText style={AppStyles.primaryButtonText}>Confirm Account</ThemedText>
             )}
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.linkButton} onPress={resendConfirmationCode}>
-            <ThemedText style={[styles.linkText, { color: primaryColor }]}>
-              Resend Code
-            </ThemedText>
+          <TouchableOpacity style={AppStyles.linkButton} onPress={resendConfirmationCode}>
+            <ThemedText style={[AppStyles.linkText, { color: primaryColor }]}>Resend Code</ThemedText>
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.linkButton} onPress={() => setShowConfirmation(false)}>
-            <ThemedText style={[styles.linkText, { color: primaryColor }]}>
-              Back to Sign Up
-            </ThemedText>
+          <TouchableOpacity style={AppStyles.linkButton} onPress={() => setShowConfirmation(false)}>
+            <ThemedText style={[AppStyles.linkText, { color: primaryColor }]}>Back to Sign Up</ThemedText>
           </TouchableOpacity>
         </ThemedView>
       </KeyboardAvoidingView>
@@ -210,30 +225,23 @@ export default function AuthForm({ onAuthSuccess }: AuthFormProps) {
 
   return (
     <KeyboardAvoidingView
-      style={styles.container}
+      style={AppStyles.flex1}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        <ThemedView style={styles.formContainer}>
-          <ThemedText type="title" style={styles.title}>
+      <ScrollView contentContainerStyle={AppStyles.scrollContent} showsVerticalScrollIndicator={false}>
+        <ThemedView style={AppStyles.formContainer}>
+          <ThemedText type="title" style={localStyles.titleOverride}>
             {isLogin ? 'Welcome Back' : 'Create Account'}
           </ThemedText>
-          <ThemedText style={styles.subtitle}>
+          <ThemedText style={AppStyles.subtitle}>
             {isLogin ? 'Sign in to your account' : 'Sign up to get started'}
           </ThemedText>
 
           {!isLogin && (
             <TextInput
-              style={[
-                styles.input,
-                {
-                  borderColor,
-                  backgroundColor: inputBackgroundColor,
-                  color: textColor,
-                }
-              ]}
+              style={[AppStyles.input, { borderColor, backgroundColor: inputBackgroundColor, color: textColor }]}
               placeholder="Full Name"
-              placeholderTextColor={useThemeColor({ light: '#666', dark: '#999' }, 'text')}
+              placeholderTextColor={placeholderColor}
               value={fullName}
               onChangeText={setFullName}
               autoCapitalize="words"
@@ -241,16 +249,9 @@ export default function AuthForm({ onAuthSuccess }: AuthFormProps) {
           )}
 
           <TextInput
-            style={[
-              styles.input,
-              {
-                borderColor,
-                backgroundColor: inputBackgroundColor,
-                color: textColor,
-              }
-            ]}
+            style={[AppStyles.input, { borderColor, backgroundColor: inputBackgroundColor, color: textColor }]}
             placeholder="Email"
-            placeholderTextColor={useThemeColor({ light: '#666', dark: '#999' }, 'text')}
+            placeholderTextColor={placeholderColor}
             value={email}
             onChangeText={setEmail}
             keyboardType="email-address"
@@ -259,16 +260,9 @@ export default function AuthForm({ onAuthSuccess }: AuthFormProps) {
           />
 
           <TextInput
-            style={[
-              styles.input,
-              {
-                borderColor,
-                backgroundColor: inputBackgroundColor,
-                color: textColor,
-              }
-            ]}
+            style={[AppStyles.input, { borderColor, backgroundColor: inputBackgroundColor, color: textColor }]}
             placeholder="Password"
-            placeholderTextColor={useThemeColor({ light: '#666', dark: '#999' }, 'text')}
+            placeholderTextColor={placeholderColor}
             value={password}
             onChangeText={setPassword}
             secureTextEntry
@@ -277,16 +271,9 @@ export default function AuthForm({ onAuthSuccess }: AuthFormProps) {
 
           {!isLogin && (
             <TextInput
-              style={[
-                styles.input,
-                {
-                  borderColor,
-                  backgroundColor: inputBackgroundColor,
-                  color: textColor,
-                }
-              ]}
+              style={[AppStyles.input, { borderColor, backgroundColor: inputBackgroundColor, color: textColor }]}
               placeholder="Confirm Password"
-              placeholderTextColor={useThemeColor({ light: '#666', dark: '#999' }, 'text')}
+              placeholderTextColor={placeholderColor}
               value={confirmPassword}
               onChangeText={setConfirmPassword}
               secureTextEntry
@@ -295,33 +282,33 @@ export default function AuthForm({ onAuthSuccess }: AuthFormProps) {
           )}
 
           <TouchableOpacity
-            style={[styles.primaryButton, { backgroundColor: primaryColor }]}
+            style={[AppStyles.primaryButton, { backgroundColor: primaryColor, marginTop: 8, marginBottom: 16 }]}
             onPress={isLogin ? handleSignIn : handleSignUp}
             disabled={loading}
           >
             {loading ? (
               <ActivityIndicator color="white" />
             ) : (
-              <ThemedText style={styles.primaryButtonText}>
+              <ThemedText style={AppStyles.primaryButtonText}>
                 {isLogin ? 'Sign In' : 'Sign Up'}
               </ThemedText>
             )}
           </TouchableOpacity>
 
           {isLogin && (
-            <TouchableOpacity style={styles.linkButton}>
-              <ThemedText style={[styles.linkText, { color: primaryColor }]}>
+            <TouchableOpacity style={AppStyles.linkButton}>
+              <ThemedText style={[AppStyles.linkText, { color: primaryColor }]}>
                 Forgot Password?
               </ThemedText>
             </TouchableOpacity>
           )}
 
-          <View style={styles.switchContainer}>
-            <ThemedText style={styles.switchText}>
+          <View style={AppStyles.switchContainer}>
+            <ThemedText style={AppStyles.switchText}>
               {isLogin ? "Don't have an account? " : "Already have an account? "}
             </ThemedText>
             <TouchableOpacity onPress={switchAuthMode}>
-              <ThemedText style={[styles.linkText, { color: primaryColor }]}>
+              <ThemedText style={[AppStyles.linkText, { color: primaryColor }]}>
                 {isLogin ? 'Sign Up' : 'Sign In'}
               </ThemedText>
             </TouchableOpacity>
@@ -332,66 +319,10 @@ export default function AuthForm({ onAuthSuccess }: AuthFormProps) {
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  scrollContent: {
-    flexGrow: 1,
-    justifyContent: 'center',
-  },
-  formContainer: {
-    paddingHorizontal: 24,
-    paddingVertical: 32,
-    maxWidth: 400,
-    width: '100%',
-    alignSelf: 'center',
-  },
-  title: {
+// Only component-specific overrides that don't belong in the shared sheet
+const localStyles = StyleSheet.create({
+  titleOverride: {
     textAlign: 'center',
     marginBottom: 8,
-  },
-  subtitle: {
-    textAlign: 'center',
-    marginBottom: 32,
-    opacity: 0.7,
-  },
-  input: {
-    height: 48,
-    borderWidth: 1,
-    borderRadius: 8,
-    paddingHorizontal: 16,
-    marginBottom: 16,
-    fontSize: 16,
-  },
-  primaryButton: {
-    height: 48,
-    borderRadius: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginTop: 8,
-    marginBottom: 16,
-  },
-  primaryButtonText: {
-    color: 'white',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  linkButton: {
-    alignItems: 'center',
-    paddingVertical: 8,
-  },
-  linkText: {
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  switchContainer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginTop: 24,
-  },
-  switchText: {
-    fontSize: 14,
   },
 });
