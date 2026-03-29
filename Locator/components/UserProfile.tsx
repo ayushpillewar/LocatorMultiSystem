@@ -58,10 +58,10 @@ export default function UserProfile() {
     <ThemedView style={[styles.container, { borderBottomColor: borderColor }]}>
       <View style={styles.userInfo}>
         <ThemedText type="defaultSemiBold" style={styles.welcomeText}>
-          Welcome back!
+          Welcome
         </ThemedText>
         <ThemedText style={styles.emailText}>
-          {user.attributes?.email || user.username}
+          {user.signInDetails?.loginId || user.username}
         </ThemedText>
         {user.attributes?.name && (
           <ThemedText style={styles.nameText}>

@@ -54,7 +54,7 @@ export default function AuthWrapper({ children }: AuthWrapperProps) {
           console.log('User signed up:', data.username);
           break;
         case 'signOut':
-          handleSignOut();
+          setUser(null);
           console.log('User signed out');
           break;
         case 'signIn_failure':
