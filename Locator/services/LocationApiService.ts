@@ -1,5 +1,5 @@
 import { API_BASE_URL } from "../constants/const";   
-import { Location } from "../dto/models";
+import { Location, SubscriptionRequestBody, User } from "../dto/models";
 
 
 export class LocationApiService {
@@ -64,5 +64,50 @@ export class LocationApiService {
             console.error('Failed to fetch location history:', error);
             return [];      
         }
+    }
+
+    async checkSubscription(userId: string, token?: string): Promise<User | null> {
+        try {
+            const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+            if (token) headers['Authorization'] = `Bearer ${token}`;
+
+            const response = await fetch(`${this.apiBaseUrl}/subscribe?userId=${userId}`, {
+                method: 'GET',
+                headers,
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                return data as User;
+            } else {
+                console.error('[LocationApiService] checkSubscription responded with status:', response.status);
+                return new User(userId, '', '', '', '');
+            }
+        } catch (error) {
+            console.error('[LocationApiService] Failed to check subscription:', error);
+            return new User(userId, '', '', '', '');
+        }
+    }
+
+    async subscribeToService(subscriptionData: SubscriptionRequestBody, token?: string): Promise<void> {
+        try {
+            const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+            if (token) headers['Authorization'] = `Bearer ${token}`;
+
+            const response = await fetch(`${this.apiBaseUrl}/subscribe`, {
+                method: 'PUT',
+                headers,
+                body: JSON.stringify(subscriptionData),
+            }); 
+
+            if (!response.ok) {
+                console.error('[LocationApiService] subscribeToService responded with status:', response.status);
+            } else {
+                console.log('[LocationApiService] Subscription successful');
+            }
+        } catch (error) {
+            console.error('[LocationApiService] Failed to subscribe to service:', error);
+        }  
+
     }
 }

@@ -26,7 +26,20 @@ export const STORAGE_KEYS = {
   USER_EMAIL: '@locator/user_email',
   USER_NAME: '@locator/user_name',
   LOCATION_HISTORY: '@locator/location_history',
+  BG_UPDATE_INTERVAL: '@locator/bg_update_interval',
+  FG_UPDATE_INTERVAL: '@locator/fg_update_interval',
+  BG_LAST_SEND_TIME: '@locator/bg_last_send_time',
 };
+
+export const INTERVAL_OPTIONS = [
+  { label: '10 s',  value: 10_000 },
+  { label: '30 s',  value: 30_000 },
+  { label: '1 min', value: 60_000 },
+  { label: '5 min', value: 300_000 },
+] as const;
+
+export const DEFAULT_BG_INTERVAL = 30_000;
+export const DEFAULT_FG_INTERVAL = 10_000;
 
 const LOCATION_TRACKING = 'background-location-task';
 const MAX_HISTORY_ENTRIES = 500;
@@ -53,11 +66,26 @@ async function saveLocationToHistory(entry: LocationHistoryEntry): Promise<void>
 
 // Define the background task — must be registered at module load time
 TaskManager.defineTask(LOCATION_TRACKING, async ({ data, error }: any) => {
+  console.log('[BG Task] Location update received');
   if (error) {
     console.error('[BG Task] Location task error:', error);
     return;
   }
   if (!data) return;
+
+  // Time-gate: respect the user-selected interval regardless of OS delivery rate
+  const now = Date.now();
+  const [intervalRaw, lastSendRaw] = await Promise.all([
+    AsyncStorage.getItem(STORAGE_KEYS.BG_UPDATE_INTERVAL),
+    AsyncStorage.getItem(STORAGE_KEYS.BG_LAST_SEND_TIME),
+  ]);
+  const interval = intervalRaw ? parseInt(intervalRaw, 10) : DEFAULT_BG_INTERVAL;
+  const lastSend = lastSendRaw ? parseInt(lastSendRaw, 10) : 0;
+  if (now - lastSend < interval) {
+    console.log(`[BG Task] Skipping — only ${now - lastSend}ms since last send (interval: ${interval}ms)`);
+    return;
+  }
+  await AsyncStorage.setItem(STORAGE_KEYS.BG_LAST_SEND_TIME, String(now));
 
   const { locations } = data as { locations: Location.LocationObject[] };
   try {
@@ -158,10 +186,11 @@ export class LocationService {
     if (this.isTracking) return true;
     try {
       this.onLocationUpdate = onLocationUpdate;
+      const fgInterval = await LocationService.getForegroundInterval();
       this.locationSubscription = await Location.watchPositionAsync(
         {
           accuracy: Location.Accuracy.High,
-          timeInterval: 10000,
+          timeInterval: fgInterval,
           distanceInterval: 10,
         },
         (location) => {
@@ -202,14 +231,18 @@ export class LocationService {
       const hasPermission = await this.requestPermissions();
       if (!hasPermission) return false;
 
+      // Stop any existing registration so the updated interval takes effect
       const isRegistered = await TaskManager.isTaskRegisteredAsync(LOCATION_TRACKING);
-      if (isRegistered) return true;
+      if (isRegistered) {
+        await Location.stopLocationUpdatesAsync(LOCATION_TRACKING);
+      }
+
+      const interval = await LocationService.getBackgroundInterval();
 
       await Location.startLocationUpdatesAsync(LOCATION_TRACKING, {
         accuracy: Location.Accuracy.High,
-        timeInterval: 30000,       // every 30 s
-        distanceInterval: 50,      // or every 50 m
-        deferredUpdatesInterval: 60000,
+        timeInterval: interval,
+        distanceInterval: 0,       // don't filter by distance — fire on time only
         foregroundService: {
           notificationTitle: 'Locator Running',
           notificationBody: 'Sending your location to the server',
@@ -224,6 +257,11 @@ export class LocationService {
       console.error('[LocationService] Error starting background tracking:', error);
       return false;
     }
+  }
+
+  async restartBackgroundTracking(): Promise<boolean> {
+    await this.stopBackgroundTracking();
+    return this.startBackgroundTracking();
   }
 
   async stopBackgroundTracking(): Promise<void> {
@@ -247,6 +285,32 @@ export class LocationService {
   }
 
   // ─── History helpers ────────────────────────────────────────────────────────
+
+  static async getBackgroundInterval(): Promise<number> {
+    try {
+      const raw = await AsyncStorage.getItem(STORAGE_KEYS.BG_UPDATE_INTERVAL);
+      return raw ? parseInt(raw, 10) : DEFAULT_BG_INTERVAL;
+    } catch {
+      return DEFAULT_BG_INTERVAL;
+    }
+  }
+
+  static async setBackgroundInterval(ms: number): Promise<void> {
+    await AsyncStorage.setItem(STORAGE_KEYS.BG_UPDATE_INTERVAL, String(ms));
+  }
+
+  static async getForegroundInterval(): Promise<number> {
+    try {
+      const raw = await AsyncStorage.getItem(STORAGE_KEYS.FG_UPDATE_INTERVAL);
+      return raw ? parseInt(raw, 10) : DEFAULT_FG_INTERVAL;
+    } catch {
+      return DEFAULT_FG_INTERVAL;
+    }
+  }
+
+  static async setForegroundInterval(ms: number): Promise<void> {
+    await AsyncStorage.setItem(STORAGE_KEYS.FG_UPDATE_INTERVAL, String(ms));
+  }
 
   static async getLocationHistory(): Promise<LocationHistoryEntry[]> {
     try {

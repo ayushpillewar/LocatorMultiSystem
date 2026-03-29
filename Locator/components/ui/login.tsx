@@ -11,12 +11,13 @@ import {
   ScrollView,
 } from 'react-native';
 import { signUp, signIn, confirmSignUp, resendSignUpCode, fetchAuthSession, getCurrentUser } from '@aws-amplify/auth';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import { AppStyles } from '@/constants/appStyles';
-import { STORAGE_KEYS } from '@/constants/const';
+import { refreshIdentityPoolToken } from '@/components/AuthWrapper';
+
 
 interface AuthFormProps {
   onAuthSuccess: () => void;
@@ -93,31 +94,16 @@ export default function AuthForm({ onAuthSuccess }: AuthFormProps) {
     }
   };
 
+
+
+
   const handleSignIn = async () => {
     if (!validateForm()) return;
 
     setLoading(true);
     try {
       await signIn({ username: email, password: password });
-
-      // Store JWT token and user info for the background location service
-      try {
-        const [session, currentUser] = await Promise.all([
-          fetchAuthSession(),
-          getCurrentUser(),
-        ]);
-
-        const token = session.tokens?.idToken?.toString() ?? '';
-        
-        await AsyncStorage.multiSet([
-          [STORAGE_KEYS.JWT_TOKEN, token],
-          [STORAGE_KEYS.USER_ID, currentUser.userId],
-          [STORAGE_KEYS.USER_EMAIL, email.toLowerCase().trim()],
-        ]);
-      } catch (sessionErr) {
-        console.warn('[AuthForm] Could not persist session tokens:', sessionErr);
-      }
-
+      await refreshIdentityPoolToken();
       onAuthSuccess();
     } catch (error: any) {
       Alert.alert('Sign In Failed', error.message || 'Invalid email or password');

@@ -1,15 +1,38 @@
 import React, { useEffect, useState } from 'react';
 import { View, ActivityIndicator, StyleSheet } from 'react-native';
-import { getCurrentUser, signOut } from '@aws-amplify/auth';
+import { getCurrentUser, signOut, fetchAuthSession} from '@aws-amplify/auth';
 import { Hub } from '@aws-amplify/core';
 import { ThemedView } from '@/components/themed-view';
 import { ThemedText } from '@/components/themed-text';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import AuthForm from '@/components/ui/login';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { STORAGE_KEYS } from '@/constants/const';
 
 interface AuthWrapperProps {
   children: React.ReactNode;
 }
+
+export async function refreshIdentityPoolToken() {
+      // Store JWT token and user info for the background location service
+      try {
+        console.log('[AuthWrapper] Refreshing identity pool token...');
+        const [session, currentUser] = await Promise.all([
+          fetchAuthSession(),
+          getCurrentUser(),
+        ]);
+
+        const token = session.tokens?.idToken?.toString() ?? '';
+        
+        await AsyncStorage.multiSet([
+          [STORAGE_KEYS.JWT_TOKEN, token],
+          [STORAGE_KEYS.USER_ID, currentUser.userId],
+          [STORAGE_KEYS.USER_EMAIL, currentUser.signInDetails?.loginId ?? ''],
+        ]);
+      } catch (sessionErr) {
+        console.warn('[AuthWrapper] Could not persist session tokens:', sessionErr);
+      }
+  }
 
 export default function AuthWrapper({ children }: AuthWrapperProps) {
   const [user, setUser] = useState<any>(null);
@@ -25,6 +48,7 @@ export default function AuthWrapper({ children }: AuthWrapperProps) {
         case 'signIn':
           setUser(data);
           console.log('User signed in:', data.username);
+          refreshIdentityPoolToken(); // Refresh tokens on sign in
           break;
         case 'signUp':
           console.log('User signed up:', data.username);
@@ -56,6 +80,7 @@ export default function AuthWrapper({ children }: AuthWrapperProps) {
   const checkAuthState = async () => {
     try {
       const authenticatedUser = await getCurrentUser();
+      refreshIdentityPoolToken(); // Ensure tokens are refreshed and stored
       setUser(authenticatedUser);
     } catch (error) {
       // User is not authenticated

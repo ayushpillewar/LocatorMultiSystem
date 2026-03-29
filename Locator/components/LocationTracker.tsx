@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, Alert, Pressable, ActivityIndicator } from 'react-native';
+import { View, StyleSheet, Alert, Pressable, ActivityIndicator, Linking, Platform } from 'react-native';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import * as Location from 'expo-location';
-import { LocationService, LocationHistoryEntry } from '@/services/LocationService';
+import { LocationService, LocationHistoryEntry, INTERVAL_OPTIONS, DEFAULT_BG_INTERVAL, DEFAULT_FG_INTERVAL } from '@/services/LocationService';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import { Fonts } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
@@ -18,6 +18,52 @@ interface LocationData {
 
 interface LocationTrackerProps {
   style?: any;
+}
+
+function IntervalPickerRow({
+  label,
+  selected,
+  onSelect,
+  tint,
+  isDark,
+}: {
+  label: string;
+  selected: number;
+  onSelect: (value: number) => void;
+  tint: string;
+  isDark: boolean;
+}) {
+  return (
+    <View style={{ marginTop: 10 }}>
+      <ThemedText style={{ fontSize: 11, opacity: 0.5, marginBottom: 6, fontWeight: '600', letterSpacing: 0.5 }}>
+        {label.toUpperCase()}
+      </ThemedText>
+      <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+        {INTERVAL_OPTIONS.map((opt) => {
+          const active = selected === opt.value;
+          return (
+            <Pressable
+              key={opt.value}
+              onPress={() => onSelect(opt.value)}
+              style={({ pressed }) => ({
+                paddingHorizontal: 14,
+                paddingVertical: 6,
+                borderRadius: 20,
+                borderWidth: 1.5,
+                borderColor: active ? tint : isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.2)',
+                backgroundColor: active ? tint + '22' : 'transparent',
+                opacity: pressed ? 0.7 : 1,
+              })}
+            >
+              <ThemedText style={{ fontSize: 13, fontWeight: active ? '700' : '500', color: active ? tint : undefined }}>
+                {opt.label}
+              </ThemedText>
+            </Pressable>
+          );
+        })}
+      </View>
+    </View>
+  );
 }
 
 type ActiveTab = 'tracking' | 'history';
@@ -36,6 +82,10 @@ export function LocationTracker({ style }: LocationTrackerProps) {
   const [isBackgroundTracking, setIsBackgroundTracking] = useState(false);
   const [bgLoading, setBgLoading] = useState(false);
 
+  // Interval state
+  const [bgInterval, setBgInterval] = useState(DEFAULT_BG_INTERVAL);
+  const [fgInterval, setFgInterval] = useState(DEFAULT_FG_INTERVAL);
+
   // History state
   const [locationHistory, setLocationHistory] = useState<LocationHistoryEntry[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
@@ -45,6 +95,8 @@ export function LocationTracker({ style }: LocationTrackerProps) {
   useEffect(() => {
     checkPermissions();
     checkBackgroundTrackingStatus();
+    LocationService.getBackgroundInterval().then(setBgInterval);
+    LocationService.getForegroundInterval().then(setFgInterval);
     return () => {
       watchSubscription?.remove();
     };
@@ -78,6 +130,43 @@ export function LocationTracker({ style }: LocationTrackerProps) {
     setIsBackgroundTracking(active);
   };
 
+  const handleBgIntervalChange = async (ms: number) => {
+    await LocationService.setBackgroundInterval(ms);
+    setBgInterval(ms);
+    if (isBackgroundTracking) {
+      Alert.alert(
+        'Restart Required',
+        'The background service needs to restart to apply the new interval. Restart now?',
+        [
+          { text: 'Later', style: 'cancel' },
+          {
+            text: 'Restart',
+            onPress: async () => {
+              setBgLoading(true);
+              try {
+                await locationService.restartBackgroundTracking();
+              } finally {
+                setBgLoading(false);
+              }
+            },
+          },
+        ]
+      );
+    }
+  };
+
+  const handleFgIntervalChange = async (ms: number) => {
+    await LocationService.setForegroundInterval(ms);
+    setFgInterval(ms);
+    if (isTracking) {
+      watchSubscription?.remove();
+      setWatchSubscription(null);
+      setIsTracking(false);
+      setLastUpdateTime('');
+      await handleStartTracking(ms);
+    }
+  };
+
   const handleToggleBackgroundService = async () => {
     setBgLoading(true);
     try {
@@ -91,7 +180,7 @@ export function LocationTracker({ style }: LocationTrackerProps) {
           setIsBackgroundTracking(true);
           Alert.alert(
             'Started',
-            'Background service is now running. Your location will be sent to the server every 30 seconds.'
+            `Background service is now running. Your location will be sent to the server every ${INTERVAL_OPTIONS.find(o => o.value === bgInterval)?.label ?? '30 s'}.`
           );
         } else {
           Alert.alert(
@@ -108,16 +197,17 @@ export function LocationTracker({ style }: LocationTrackerProps) {
     }
   };
 
-  const handleStartTracking = async () => {
+  const handleStartTracking = async (interval?: number) => {
     if (!hasPermission) {
       await checkPermissions();
       return;
     }
     try {
+      const timeInterval = interval ?? fgInterval;
       const subscription = await Location.watchPositionAsync(
         {
           accuracy: Location.Accuracy.High,
-          timeInterval: 10000,
+          timeInterval,
           distanceInterval: 10,
         },
         (location) => {
@@ -183,6 +273,18 @@ export function LocationTracker({ style }: LocationTrackerProps) {
     } finally {
       setHistoryLoading(false);
     }
+  };
+
+  const openInMaps = async (latitude: string, longitude: string) => {
+    const lat = parseFloat(latitude);
+    const lng = parseFloat(longitude);
+    const nativeUrl = Platform.select({
+      ios: `maps://?q=${lat},${lng}`,
+      android: `geo:${lat},${lng}?q=${lat},${lng}`,
+      default: `https://www.google.com/maps?q=${lat},${lng}`,
+    })!;
+    const canOpen = await Linking.canOpenURL(nativeUrl);
+    Linking.openURL(canOpen ? nativeUrl : `https://www.google.com/maps?q=${lat},${lng}`);
   };
 
   const handleClearHistory = () => {
@@ -290,9 +392,16 @@ export function LocationTracker({ style }: LocationTrackerProps) {
             </View>
             <ThemedText style={AppStyles.cardSubtext}>
               {isBackgroundTracking
-                ? 'Sending your location to the server every 30 s'
+                ? `Sending your location to the server every ${INTERVAL_OPTIONS.find(o => o.value === bgInterval)?.label ?? '30 s'}`
                 : 'Tap below to start tracking in the background'}
             </ThemedText>
+            <IntervalPickerRow
+              label="Update Interval"
+              selected={bgInterval}
+              onSelect={handleBgIntervalChange}
+              tint={tint}
+              isDark={isDark}
+            />
             <Pressable
               style={({ pressed }) => [
                 AppStyles.primaryButton,
@@ -351,32 +460,12 @@ export function LocationTracker({ style }: LocationTrackerProps) {
             </View>
           )}
 
-          {/* Foreground action buttons */}
-          <View style={AppStyles.gap10}>
-            {!isTracking ? (
-              <>
-                <Pressable
-                  style={({ pressed }) => [AppStyles.primaryButton, { backgroundColor: tint, opacity: pressed ? 0.8 : 1 }]}
-                  onPress={handleStartTracking}
-                >
-                  <ThemedText style={AppStyles.primaryButtonText}>Start Foreground Tracking</ThemedText>
-                </Pressable>
-                <Pressable
-                  style={({ pressed }) => [AppStyles.ghostButton, { borderColor: tint, opacity: pressed ? 0.7 : 1 }]}
-                  onPress={handleGetCurrentLocation}
-                >
-                  <ThemedText style={[AppStyles.ghostButtonText, { color: tint }]}>Get Current Location</ThemedText>
-                </Pressable>
-              </>
-            ) : (
-              <Pressable
-                style={({ pressed }) => [AppStyles.primaryButton, { backgroundColor: '#EF4444', opacity: pressed ? 0.8 : 1 }]}
-                onPress={handleStopTracking}
-              >
-                <ThemedText style={AppStyles.primaryButtonText}>Stop Foreground Tracking</ThemedText>
-              </Pressable>
-            )}
-          </View>
+          <Pressable
+            style={({ pressed }) => [AppStyles.ghostButton, { borderColor: tint, opacity: pressed ? 0.7 : 1 }]}
+            onPress={handleGetCurrentLocation}
+          >
+            <ThemedText style={[AppStyles.ghostButtonText, { color: tint }]}>Get Current Location</ThemedText>
+          </Pressable>
         </View>
       )}
 
@@ -430,10 +519,18 @@ export function LocationTracker({ style }: LocationTrackerProps) {
                   {entry.insertionTimestamp}
                 </ThemedText>
               </View>
-              <View style={[AppStyles.pill, { backgroundColor: entry.sentToApi ? 'rgba(34,197,94,0.12)' : 'rgba(234,179,8,0.12)' }]}>
-                <ThemedText style={[AppStyles.pillText, { color: entry.sentToApi ? '#22C55E' : '#EAB308' }]}>
-                  {entry.sentToApi ? 'Synced' : 'Pending'}
-                </ThemedText>
+              <View style={localStyles.historyRowRight}>
+                <View style={[AppStyles.pill, { backgroundColor: entry.sentToApi ? 'rgba(34,197,94,0.12)' : 'rgba(234,179,8,0.12)' }]}>
+                  <ThemedText style={[AppStyles.pillText, { color: entry.sentToApi ? '#22C55E' : '#EAB308' }]}>
+                    {entry.sentToApi ? 'Synced' : 'Pending'}
+                  </ThemedText>
+                </View>
+                <Pressable
+                  style={({ pressed }) => [localStyles.mapsButton, { borderColor: tint, opacity: pressed ? 0.7 : 1 }]}
+                  onPress={() => openInMaps(entry.latitude, entry.longitude)}
+                >
+                  <ThemedText style={[localStyles.mapsButtonText, { color: tint }]}>📍 Maps</ThemedText>
+                </Pressable>
               </View>
             </View>
           ))}
@@ -507,6 +604,20 @@ const localStyles = StyleSheet.create({
   },
   historyCoords: {
     fontSize: 14,
+    fontWeight: '600',
+  },
+  historyRowRight: {
+    alignItems: 'flex-end',
+    gap: 6,
+  },
+  mapsButton: {
+    borderWidth: 1.5,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  mapsButtonText: {
+    fontSize: 12,
     fontWeight: '600',
   },
 });
