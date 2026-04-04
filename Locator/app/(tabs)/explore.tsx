@@ -11,6 +11,7 @@ import { STORAGE_KEYS } from '@/services/LocationService';
 import { LocationApiService } from '@/services/LocationApiService';
 import { User } from '@/dto/models';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { AppleSubscribeButton } from '@/services/AppleSubscriptionService';
 
 type SubStatus = 'loading' | 'active' | 'expired' | 'unavailable';
 
@@ -110,6 +111,8 @@ export default function ExploreScreen() {
     subStatus === 'active' ? 'Active' :
     subStatus === 'expired' ? 'Expired' : 'Unavailable';
 
+
+
   return (
     <ThemedView style={styles.screen}>
       <ScrollView
@@ -175,9 +178,10 @@ export default function ExploreScreen() {
               style={({ pressed }) => [AppStyles.ghostButton, { borderColor: tint, marginTop: 14, opacity: pressed ? 0.7 : 1 }]}
               onPress={onRefresh}
             >
-              <ThemedText style={[AppStyles.ghostButtonText, { color: tint }]}>↻  Refresh</ThemedText>
+              <ThemedText style={[AppStyles.linkButton, { color: tint }]}>↻  Refresh</ThemedText>
             </Pressable>
           )}
+          {subStatus === 'expired' && <AppleSubscribeButton />}
         </View>
 
         {/* ── Help section ────────────────────────────────────────────── */}

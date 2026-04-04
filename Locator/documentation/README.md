@@ -50,6 +50,6 @@ Join our community of developers creating universal apps.
 - [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
 
 ## use this command to build locally 
-
+- npx expo prebuild
 - npx expo run:ios
 - npx expo run:ios --configuration Debug
