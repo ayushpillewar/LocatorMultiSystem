@@ -17,6 +17,7 @@ import { ThemedView } from '@/components/themed-view';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import { AppStyles } from '@/constants/appStyles';
 import { refreshIdentityPoolToken } from '@/components/AuthWrapper';
+import LocatorImage from '@/components/LocatorImage';
 
 
 interface AuthFormProps {
@@ -51,10 +52,6 @@ export default function AuthForm({ onAuthSuccess }: AuthFormProps) {
       return false;
     }
     if (!isLogin) {
-      if (!fullName.trim()) {
-        Alert.alert('Error', 'Please enter your full name');
-        return false;
-      }
       if (password !== confirmPassword) {
         Alert.alert('Error', 'Passwords do not match');
         return false;
@@ -214,6 +211,9 @@ export default function AuthForm({ onAuthSuccess }: AuthFormProps) {
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       <ScrollView contentContainerStyle={AppStyles.scrollContent} showsVerticalScrollIndicator={false}>
+        <View style={localStyles.bannerContainer}>
+          <LocatorImage />
+        </View>
         <ThemedView style={AppStyles.formContainer}>
           <ThemedText type="title" style={localStyles.titleOverride}>
             {isLogin ? 'Welcome Back' : 'Create Account'}
@@ -309,5 +309,9 @@ const localStyles = StyleSheet.create({
   titleOverride: {
     textAlign: 'center',
     marginBottom: 8,
+  },
+  bannerContainer: {
+    width: '100%',
+    height: 260,
   },
 });

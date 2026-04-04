@@ -53,3 +53,14 @@ Join our community of developers creating universal apps.
 - npx expo prebuild
 - npx expo run:ios
 - npx expo run:ios --configuration Debug
+
+## Create a release build
+Requires Xcode and a paid Apple Developer account.
+
+In Xcode:
+
+Select Locator target → Signing & Capabilities → set your Team
+Set scheme to Release: Product → Scheme → Edit Scheme → Run → set Build Configuration to Release
+Select Any iOS Device (arm64) as the destination
+Product → Archive
+In the Organizer window → Distribute App → App Store Connect

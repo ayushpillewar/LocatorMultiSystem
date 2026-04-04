@@ -43,31 +43,21 @@ export default function AuthWrapper({ children }: AuthWrapperProps) {
     checkAuthState();
     
     // Listen for auth events
-    const hubListener = Hub.listen('auth', ({ payload: { event, data } }) => {
-      switch (event) {
-        case 'signIn':
-          setUser(data);
-          console.log('User signed in:', data.username);
-          refreshIdentityPoolToken(); // Refresh tokens on sign in
+    const hubListener = Hub.listen('auth', ({ payload }) => {
+      switch (payload.event) {
+        case 'signedIn':
+          checkAuthState();
           break;
-        case 'signUp':
-          console.log('User signed up:', data.username);
-          break;
-        case 'signOut':
+        case 'signedOut':
           setUser(null);
           console.log('User signed out');
           break;
-        case 'signIn_failure':
-          console.log('User sign in failed:', data);
-          break;
         case 'tokenRefresh':
           console.log('Token refreshed');
+          refreshIdentityPoolToken();
           break;
         case 'tokenRefresh_failure':
           console.log('Token refresh failed');
-          break;
-        case 'configured':
-          console.log('Auth module configured');
           break;
         default:
           break;
