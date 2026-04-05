@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, StyleSheet, Alert, Pressable, ActivityIndicator, Linking, Platform } from 'react-native';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
+import { ThemedText } from '@/components/ui/themed-text';
+import { ThemedView } from '@/components/ui/themed-view';
 import * as Location from 'expo-location';
 import { LocationService, LocationHistoryEntry, INTERVAL_OPTIONS, DEFAULT_BG_INTERVAL, DEFAULT_FG_INTERVAL } from '@/services/LocationService';
 import { useThemeColor } from '@/hooks/use-theme-color';

@@ -19,13 +19,12 @@ export class LocationApiService {
     
     async sendLocation(locationData: Location, token?: string): Promise<void> {
         try {
-            console.log('📍 [LocationApiService] Sending location:', locationData);
+            console.log('📍 [LocationApiService] Sending location:', locationData.insertionTimestamp);
             const headers: Record<string, string> = {
                  'Content-Type': 'application/json'
                 
                 };
             if (token) headers['Authorization'] = `Bearer ${token}`;
-            console.log('📍 [LocationApiService] Request headers:', headers);
             const response = await fetch(`${this.apiBaseUrl}/location`, {
                 method: 'POST',
                 headers,
@@ -54,7 +53,7 @@ export class LocationApiService {
             
             if (response.ok) {
                 const data = await response.json();
-                console.log('📍 [LocationApiService] Fetched location history:', data);
+                console.log('📍 [LocationApiService] Fetched location history of size :', data.length);
                 return data as Location[];
             } else {
                 console.error('API responded with status:', response.status);

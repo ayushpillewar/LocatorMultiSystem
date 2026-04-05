@@ -2,10 +2,10 @@ import React, { useEffect, useState } from 'react';
 import { View, ActivityIndicator, StyleSheet } from 'react-native';
 import { getCurrentUser, signOut, fetchAuthSession} from '@aws-amplify/auth';
 import { Hub } from '@aws-amplify/core';
-import { ThemedView } from '@/components/themed-view';
-import { ThemedText } from '@/components/themed-text';
+import { ThemedView } from '@/components/ui/themed-view';
+import { ThemedText } from '@/components/ui/themed-text';
 import { useThemeColor } from '@/hooks/use-theme-color';
-import AuthForm from '@/components/ui/login';
+import AuthForm from '@/app/login';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { STORAGE_KEYS } from '@/constants/const';
 

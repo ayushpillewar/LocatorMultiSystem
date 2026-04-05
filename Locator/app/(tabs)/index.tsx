@@ -1,6 +1,6 @@
 import { StyleSheet, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { LocationTracker } from '@/components/LocationTracker';
+import { LocationTracker } from '@/app/(tabs)/LocationTracker';
 import UserProfile from '@/components/UserProfile';
 
 export default function HomeScreen() {

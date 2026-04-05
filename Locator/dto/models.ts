@@ -54,3 +54,22 @@ export class SubscriptionRequestBody {
     this.subType = subType;
   }
 }
+
+
+// Background service data model
+
+export interface LocationData {
+  latitude: number;
+  longitude: number;
+  accuracy: number | null;
+  timestamp: number;
+}
+
+export interface LocationHistoryEntry {
+  userId: string;
+  insertionTimestamp: string;
+  latitude: string;
+  longitude: string;
+  userEmail: string;
+  sentToApi: boolean;
+}

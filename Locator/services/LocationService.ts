@@ -2,23 +2,8 @@ import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LocationApiService } from './LocationApiService';
-import { Location as LocationModel } from '../dto/models';
+import { LocationData, LocationHistoryEntry, Location as LocationModel } from '../dto/models';
 
-export interface LocationData {
-  latitude: number;
-  longitude: number;
-  accuracy: number | null;
-  timestamp: number;
-}
-
-export interface LocationHistoryEntry {
-  userId: string;
-  insertionTimestamp: string;
-  latitude: string;
-  longitude: string;
-  userEmail: string;
-  sentToApi: boolean;
-}
 
 export const STORAGE_KEYS = {
   JWT_TOKEN: '@locator/jwt_token',
@@ -50,20 +35,6 @@ function formatTimestamp(timestamp: number): string {
   return `${ts.getFullYear()}-${pad(ts.getMonth() + 1)}-${pad(ts.getDate())} ${pad(ts.getHours())}:${pad(ts.getMinutes())}:${pad(ts.getSeconds())}`;
 }
 
-async function saveLocationToHistory(entry: LocationHistoryEntry): Promise<void> {
-  try {
-    const raw = await AsyncStorage.getItem(STORAGE_KEYS.LOCATION_HISTORY);
-    const history: LocationHistoryEntry[] = raw ? JSON.parse(raw) : [];
-    history.unshift(entry); // newest first
-    if (history.length > MAX_HISTORY_ENTRIES) {
-      history.splice(MAX_HISTORY_ENTRIES);
-    }
-    await AsyncStorage.setItem(STORAGE_KEYS.LOCATION_HISTORY, JSON.stringify(history));
-  } catch (err) {
-    console.error('[LocationService] Error saving location history:', err);
-  }
-}
-
 // Define the background task — must be registered at module load time
 TaskManager.defineTask(LOCATION_TRACKING, async ({ data, error }: any) => {
   console.log('[BG Task] Location update received');
@@ -82,6 +53,7 @@ TaskManager.defineTask(LOCATION_TRACKING, async ({ data, error }: any) => {
   const interval = intervalRaw ? parseInt(intervalRaw, 10) : DEFAULT_BG_INTERVAL;
   const lastSend = lastSendRaw ? parseInt(lastSendRaw, 10) : 0;
   if (now - lastSend < interval) {
+    // returning if the interval selected by user has not elapsed since last send — this prevents spamming the API when OS delivers updates in bursts
     console.log(`[BG Task] Skipping — only ${now - lastSend}ms since last send (interval: ${interval}ms)`);
     return;
   }
@@ -114,7 +86,7 @@ TaskManager.defineTask(LOCATION_TRACKING, async ({ data, error }: any) => {
         console.error('[BG Task] Failed to POST location:', fetchErr);
       }
 
-      await saveLocationToHistory({
+      await LocationService.saveLocationToHistory({
         userId: userId ?? '',
         insertionTimestamp,
         latitude: String(location.coords.latitude),
@@ -338,6 +310,20 @@ export class LocationService {
       return [];
     }
   }
+
+  static async saveLocationToHistory(entry: LocationHistoryEntry): Promise<void> {
+    try {
+      const raw = await AsyncStorage.getItem(STORAGE_KEYS.LOCATION_HISTORY);
+      const history: LocationHistoryEntry[] = raw ? JSON.parse(raw) : [];
+      history.unshift(entry); // newest first
+      if (history.length > MAX_HISTORY_ENTRIES) {
+        history.splice(MAX_HISTORY_ENTRIES);
+      }
+      await AsyncStorage.setItem(STORAGE_KEYS.LOCATION_HISTORY, JSON.stringify(history));
+    } catch (err) {
+      console.error('[LocationService] Error saving location history:', err);
+    }
+  } 
 
   // ─── Accessors ──────────────────────────────────────────────────────────────
 

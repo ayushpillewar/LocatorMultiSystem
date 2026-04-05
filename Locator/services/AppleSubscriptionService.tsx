@@ -1,15 +1,13 @@
-import { ThemedText } from '@/components/themed-text';
+import { ThemedText } from '@/components/ui/themed-text';
 import { AppStyles } from '@/constants/appStyles';
 import * as IAP from 'expo-iap';
 import { useEffect, useState } from 'react';
 import { Pressable } from 'react-native';
 import { useThemeColor } from '@/hooks/use-theme-color';
+import { PRODUCT_IDS } from '@/constants/const';
 
-const PRODUCT_IDS = [
-    'com.yourapp.locator.monthly',
-    'com.yourapp.locator.yearly'
-];
-//NOTE: The listeners for the callback of purchase are in apps/_layout.tsx since they need to be global and not tied to a specific screen. The hook is here since it is only relevant for Apple subscriptions and not any other purchases we may add in the future.
+// NOTE: The listeners for the callback of purchase are in apps/_layout.tsx --> purchaseUpdated
+// since they need to be global and not tied to a specific screen. The hook is here since it is only relevant for Apple subscriptions and not any other purchases we may add in the future.
 
 // Fetches available subscription products from the App Store
 export function useSubscriptionProducts() {

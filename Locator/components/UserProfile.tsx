@@ -1,9 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { View, TouchableOpacity, StyleSheet, Alert } from 'react-native';
 import { getCurrentUser, signOut } from '@aws-amplify/auth';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
+import { ThemedText } from '@/components/ui/themed-text';
+import { ThemedView } from '@/components/ui/themed-view';
 import { useThemeColor } from '@/hooks/use-theme-color';
+import LocatorImage from './LocatorImage';
+import { LocationService } from '@/services/LocationService';
 
 export default function UserProfile() {
   const [user, setUser] = useState<any>(null);
@@ -28,7 +30,7 @@ export default function UserProfile() {
   const handleSignOut = async () => {
     Alert.alert(
       'Sign Out',
-      'Are you sure you want to sign out?',
+      'Are you sure you want to sign out? it will stop background location tracking and you will need to sign in again to use the app.',
       [
         {
           text: 'Cancel',
@@ -39,6 +41,7 @@ export default function UserProfile() {
           style: 'destructive',
           onPress: async () => {
             try {
+              LocationService.getInstance().stopBackgroundTracking(); // Stop background tracking on sign out
               await signOut();
             } catch (error: any) {
               console.log('Error signing out:', error);
@@ -69,6 +72,7 @@ export default function UserProfile() {
           </ThemedText>
         )}
       </View>
+      
       <TouchableOpacity
         style={[styles.signOutButton, { borderColor: primaryColor }]}
         onPress={handleSignOut}

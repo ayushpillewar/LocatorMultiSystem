@@ -10,7 +10,7 @@ import { useColorScheme } from '@/hooks/use-color-scheme';
 import AuthWrapper, { refreshIdentityPoolToken } from '@/components/AuthWrapper';
 
 // Configure AWS Amplify
-import '../amplify-config';
+import '../constants/amplify-config';
 import { LocationApiService } from '@/services/LocationApiService';
 import { SubscriptionRequestBody } from '@/dto/models';
 import { STORAGE_KEYS } from '@/services/LocationService';
@@ -29,7 +29,7 @@ export default function RootLayout() {
       if (!transactionId) return;
 
       try {
-        refreshIdentityPoolToken(); // Ensure we have the latest tokens for API calls
+        await refreshIdentityPoolToken(); // Ensure we have the latest tokens for API calls
         const token = await AsyncStorage.getItem(STORAGE_KEYS.JWT_TOKEN);
         const userId = await AsyncStorage.getItem(STORAGE_KEYS.USER_ID);
         if (!userId || !token) {
