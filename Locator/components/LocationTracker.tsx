@@ -349,7 +349,7 @@ export function LocationTracker({ style }: LocationTrackerProps) {
         {(['tracking', 'history'] as ActiveTab[]).map((tab) => {
           const isActive = activeTab === tab;
           const label = tab === 'tracking'
-            ? 'Live Tracking'
+            ? 'Location Guard'
             : `History${locationHistory.length > 0 ? ` (${locationHistory.length})` : ''}`;
           return (
             <Pressable
@@ -417,7 +417,7 @@ export function LocationTracker({ style }: LocationTrackerProps) {
               {bgLoading
                 ? <ActivityIndicator color="#fff" size="small" />
                 : <ThemedText style={AppStyles.primaryButtonText}>
-                    {isBackgroundTracking ? 'Stop Background Service' : 'Start Background Service'}
+                    {isBackgroundTracking ? 'Stop Location Guard' : 'Start Location Guard'}
                   </ThemedText>
               }
             </Pressable>
