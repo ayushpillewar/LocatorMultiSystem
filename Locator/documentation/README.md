@@ -53,6 +53,7 @@ Join our community of developers creating universal apps.
 - npx expo prebuild
 - npx expo run:ios
 - npx expo run:ios --configuration Debug
+- npx expo run:ios --configuration Release //for running wihout metro server on local
 
 ## Create a release build
 Requires Xcode and a paid Apple Developer account.

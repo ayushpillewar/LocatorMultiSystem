@@ -8,7 +8,7 @@ import { useThemeColor } from '@/hooks/use-theme-color';
 export default function UserProfile() {
   const [user, setUser] = useState<any>(null);
   const primaryColor = useThemeColor({}, 'tint');
-  const borderColor = useThemeColor({ light: '#E0E0E0', dark: '#444444' }, 'border');
+  const borderColor = useThemeColor({ light: '#E0E0E0', dark: '#444444' }, 'text');
 
   useEffect(() => {
     checkCurrentUser();

@@ -10,7 +10,7 @@ import {
   Platform,
   ScrollView,
 } from 'react-native';
-import { signUp, signIn, confirmSignUp, resendSignUpCode, fetchAuthSession, getCurrentUser } from '@aws-amplify/auth';
+import { signUp, signIn, confirmSignUp, resendSignUpCode, fetchAuthSession, getCurrentUser, resetPassword, confirmResetPassword } from '@aws-amplify/auth';
 
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -35,6 +35,12 @@ export default function AuthForm({ onAuthSuccess }: AuthFormProps) {
   const [loading, setLoading] = useState(false);
   const [confirmationCode, setConfirmationCode] = useState('');
   const [showConfirmation, setShowConfirmation] = useState(false);
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
+  const [forgotPasswordStep, setForgotPasswordStep] = useState<'email' | 'code'>('email');
+  const [forgotEmail, setForgotEmail] = useState('');
+  const [resetCode, setResetCode] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmNewPassword, setConfirmNewPassword] = useState('');
 
   const primaryColor = useThemeColor({}, 'tint');
   const textColor = useThemeColor({}, 'text');
@@ -143,6 +149,53 @@ export default function AuthForm({ onAuthSuccess }: AuthFormProps) {
     }
   };
 
+  const handleForgotPasswordSendCode = async () => {
+    if (!forgotEmail.trim()) {
+      Alert.alert('Error', 'Please enter your email address');
+      return;
+    }
+    setLoading(true);
+    try {
+      await resetPassword({ username: forgotEmail });
+      setForgotPasswordStep('code');
+      Alert.alert('Code Sent', 'A password reset code has been sent to your email.');
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'Failed to send reset code');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleForgotPasswordConfirm = async () => {
+    if (!resetCode.trim()) {
+      Alert.alert('Error', 'Please enter the reset code');
+      return;
+    }
+    if (!newPassword.trim() || newPassword.length < 8) {
+      Alert.alert('Error', 'Password must be at least 8 characters long');
+      return;
+    }
+    if (newPassword !== confirmNewPassword) {
+      Alert.alert('Error', 'Passwords do not match');
+      return;
+    }
+    setLoading(true);
+    try {
+      await confirmResetPassword({ username: forgotEmail, confirmationCode: resetCode, newPassword });
+      Alert.alert('Success', 'Password reset successfully! You can now sign in.');
+      setShowForgotPassword(false);
+      setForgotPasswordStep('email');
+      setForgotEmail('');
+      setResetCode('');
+      setNewPassword('');
+      setConfirmNewPassword('');
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'Failed to reset password');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const resetForm = () => {
     setEmail('');
     setPassword('');
@@ -152,10 +205,118 @@ export default function AuthForm({ onAuthSuccess }: AuthFormProps) {
     setShowConfirmation(false);
   };
 
+  const openForgotPassword = () => {
+    setForgotEmail(email);
+    setForgotPasswordStep('email');
+    setResetCode('');
+    setNewPassword('');
+    setConfirmNewPassword('');
+    setShowForgotPassword(true);
+  };
+
   const switchAuthMode = () => {
     setIsLogin(!isLogin);
     resetForm();
   };
+
+  if (showForgotPassword) {
+    return (
+      <KeyboardAvoidingView
+        style={AppStyles.flex1}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
+        <ScrollView contentContainerStyle={AppStyles.scrollContent} showsVerticalScrollIndicator={false}>
+          <View style={localStyles.bannerContainer}>
+            <LocatorImage />
+          </View>
+          <ThemedView style={AppStyles.formContainer}>
+            <ThemedText type="title" style={localStyles.titleOverride}>
+              {forgotPasswordStep === 'email' ? 'Reset Password' : 'Enter New Password'}
+            </ThemedText>
+            <ThemedText style={AppStyles.subtitle}>
+              {forgotPasswordStep === 'email'
+                ? 'Enter your email to receive a reset code'
+                : `Enter the code sent to ${forgotEmail} and your new password`}
+            </ThemedText>
+
+            {forgotPasswordStep === 'email' ? (
+              <>
+                <TextInput
+                  style={[AppStyles.input, { borderColor, backgroundColor: inputBackgroundColor, color: textColor }]}
+                  placeholder="Email"
+                  placeholderTextColor={placeholderColor}
+                  value={forgotEmail}
+                  onChangeText={setForgotEmail}
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  autoComplete="email"
+                />
+                <TouchableOpacity
+                  style={[AppStyles.primaryButton, { backgroundColor: primaryColor, marginTop: 8, marginBottom: 16 }]}
+                  onPress={handleForgotPasswordSendCode}
+                  disabled={loading}
+                >
+                  {loading ? (
+                    <ActivityIndicator color="white" />
+                  ) : (
+                    <ThemedText style={AppStyles.primaryButtonText}>Send Reset Code</ThemedText>
+                  )}
+                </TouchableOpacity>
+              </>
+            ) : (
+              <>
+                <TextInput
+                  style={[AppStyles.input, { borderColor, backgroundColor: inputBackgroundColor, color: textColor }]}
+                  placeholder="Reset Code"
+                  placeholderTextColor={placeholderColor}
+                  value={resetCode}
+                  onChangeText={setResetCode}
+                  keyboardType="number-pad"
+                  maxLength={6}
+                />
+                <TextInput
+                  style={[AppStyles.input, { borderColor, backgroundColor: inputBackgroundColor, color: textColor }]}
+                  placeholder="New Password"
+                  placeholderTextColor={placeholderColor}
+                  value={newPassword}
+                  onChangeText={setNewPassword}
+                  secureTextEntry
+                  autoComplete="new-password"
+                />
+                <TextInput
+                  style={[AppStyles.input, { borderColor, backgroundColor: inputBackgroundColor, color: textColor }]}
+                  placeholder="Confirm New Password"
+                  placeholderTextColor={placeholderColor}
+                  value={confirmNewPassword}
+                  onChangeText={setConfirmNewPassword}
+                  secureTextEntry
+                  autoComplete="new-password"
+                />
+                <TouchableOpacity
+                  style={[AppStyles.primaryButton, { backgroundColor: primaryColor, marginTop: 8, marginBottom: 16 }]}
+                  onPress={handleForgotPasswordConfirm}
+                  disabled={loading}
+                >
+                  {loading ? (
+                    <ActivityIndicator color="white" />
+                  ) : (
+                    <ThemedText style={AppStyles.primaryButtonText}>Reset Password</ThemedText>
+                  )}
+                </TouchableOpacity>
+                <TouchableOpacity style={AppStyles.linkButton} onPress={() => setForgotPasswordStep('email')}>
+                  <ThemedText style={[AppStyles.linkText, { color: primaryColor }]}>Resend Code</ThemedText>
+                </TouchableOpacity>
+              </>
+            )}
+
+            <TouchableOpacity style={AppStyles.linkButton} onPress={() => setShowForgotPassword(false)}>
+              <ThemedText style={[AppStyles.linkText, { color: primaryColor }]}>Back to Sign In</ThemedText>
+            </TouchableOpacity>
+          </ThemedView>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    );
+  }
 
   if (showConfirmation) {
     return (
@@ -281,7 +442,7 @@ export default function AuthForm({ onAuthSuccess }: AuthFormProps) {
           </TouchableOpacity>
 
           {isLogin && (
-            <TouchableOpacity style={AppStyles.linkButton}>
+            <TouchableOpacity style={AppStyles.linkButton} onPress={openForgotPassword}>
               <ThemedText style={[AppStyles.linkText, { color: primaryColor }]}>
                 Forgot Password?
               </ThemedText>
